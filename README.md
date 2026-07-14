@@ -1,6 +1,6 @@
 # Snip
 
-Native macOS video trimmer — drag a video in, trim with frame-accurate sliders, preview from any point, export lossless or re-encoded.
+A small Mac app for trimming video. Drop in a file, drag the two handles to the part you want to keep, and export. It plays inline while you work, and when you need to land on an exact frame, you can.
 
 ![Snip screenshot](docs/mockup.png)
 
@@ -8,19 +8,20 @@ Native macOS video trimmer — drag a video in, trim with frame-accurate sliders
 
 **[⬇︎ Download for macOS](https://github.com/Alyetama/Snip/releases/latest/download/Snip.dmg)**
 
-That link always points at the newest release, because the DMG filename carries no
-version — see [Releases](https://github.com/Alyetama/Snip/releases) for the changelog.
+That link always points at the newest release, because the DMG filename has no
+version number in it — see [Releases](https://github.com/Alyetama/Snip/releases) for the changelog.
 
 ## Features
 
-- **Drag & drop** a video anywhere in the window (⌘O and Finder "Open With" work too)
-- **Dual trim handles** over a thumbnail filmstrip timeline
-- **Live preview** — click anywhere on the timeline and play from that exact point
-- **Frame-by-frame precision** — hold a handle (or the playhead) still for half a second and every 8 px of drag moves exactly one frame
-- **Keyboard-first**: `space` play/pause · `←`/`→` frame step · `⇧←`/`⇧→` ±1 s · `I`/`O` set in/out · `L` loop selection · `M` mute · `⌘E` export
-- **Two export modes**: Lossless (instant passthrough, cuts snap to keyframes) or Re-encode (frame-exact), with a live output-size estimate
-- **Safe exports** — written to a temp file and swapped in on success, so a failed export never destroys an existing file; overwriting the original is refused
-- Frame *stepping* is always true-to-media; displayed frame numbers assume a constant frame rate, so they're approximate on VFR recordings
+- Drag a video anywhere into the window to load it. ⌘O and Finder's "Open With" work too.
+- Two handles on a thumbnail timeline mark where the clip starts and ends.
+- Click anywhere on the timeline to jump there and play from that spot — handy for hunting down the exact cut.
+- Need a precise edit? Press and hold a handle for about half a second. It switches to frame mode, where every 8 pixels of drag moves one frame.
+- Keyboard: space plays, arrows step a frame, shift-arrows jump a second, I and O set the in and out points, L loops, M mutes, ⌘E exports.
+- Export two ways: lossless (instant, but the cut lands on the nearest keyframe) or re-encode (slower, lands on the exact frame). Re-encode shows you an estimated file size before you commit.
+- Exports go to a temp file and swap in only if they succeed, so a failed export can't clobber a file you already had. It also won't let you overwrite the original.
+
+One caveat: frame *stepping* is always exact, but the frame numbers Snip shows assume a steady frame rate. On variable-frame-rate recordings (some screen captures, phone HDR) they'll be close, not perfect.
 
 ## First launch (opening an unsigned app)
 
@@ -53,7 +54,7 @@ cd Snip
 ./build_app.sh          # → build/Snip.app
 ```
 
-Requires macOS 15+ and Xcode command line tools. Pure SwiftUI + AVFoundation, no dependencies.
+Needs macOS 15+ and the Xcode command line tools. Pure SwiftUI and AVFoundation, no dependencies.
 
 ## License
 
