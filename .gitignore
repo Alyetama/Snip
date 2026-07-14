@@ -1,0 +1,30 @@
+# Release artifacts — these ship as GitHub release assets ONLY, never committed.
+*.dmg
+*.app
+
+# Build output
+build/
+dist/
+DerivedData/
+.build/
+# Rust / Tauri
+target/
+*.o
+*.dSYM/
+
+# Xcode user state
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+
+# macOS cruft
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Node / Tauri front-end (safe no-ops if the project isn't JS)
+node_modules/
+
+# Session memory
+.claude/

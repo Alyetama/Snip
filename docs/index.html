@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snip — native macOS video trimmer</title>
+<meta name="description" content="Native macOS video trimmer — drag a video in, trim with frame-accurate sliders, preview from any point, export lossless or re-encoded.">
+<style>
+  :root {
+    --bg: #16110a;
+    --bg2: #0c0906;
+    --ink: #ece5d8;
+    --ink-dim: #a89f8d;
+    --amber: #ffb03a;
+    --amber-soft: rgba(255, 176, 58, 0.14);
+    --card: #1e1810;
+    --line: #362b1b;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -100px, #241a0e 0%, var(--bg) 45%, var(--bg2) 100%);
+    color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  main { flex: 1; width: min(920px, 92vw); margin: 0 auto; padding: 72px 0 48px; }
+
+  /* Hero */
+  .hero { text-align: center; }
+  .hero h1 {
+    font-size: clamp(44px, 8vw, 72px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(120deg, var(--ink) 30%, var(--amber) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero .tagline {
+    margin: 14px auto 0;
+    max-width: 560px;
+    font-size: 19px;
+    color: var(--ink-dim);
+  }
+  .cta { margin-top: 32px; }
+  .btn {
+    display: inline-block;
+    background: var(--amber);
+    color: #191100;
+    font-weight: 700;
+    font-size: 17px;
+    padding: 14px 34px;
+    border-radius: 999px;
+    text-decoration: none;
+    box-shadow: 0 6px 30px rgba(255, 176, 58, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 38px rgba(255, 176, 58, 0.45); }
+  .btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .cta .meta { margin-top: 12px; font-size: 13px; color: var(--ink-dim); }
+  .cta .meta a { color: var(--ink-dim); }
+
+  /* Mockup framed by trim-handle brackets — the app's own selection UI */
+  .frame {
+    position: relative;
+    margin: 56px auto 0;
+    padding: 14px 22px;
+  }
+  .frame::before, .frame::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 14px;
+    background: var(--amber);
+    border-radius: 7px;
+  }
+  .frame::before { left: 0; }
+  .frame::after { right: 0; }
+  .frame .rail-top, .frame .rail-bottom {
+    position: absolute;
+    left: 14px; right: 14px;
+    height: 4px;
+    background: var(--amber);
+  }
+  .frame .rail-top { top: 0; }
+  .frame .rail-bottom { bottom: 0; }
+  .frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 120px var(--amber-soft);
+  }
+
+  /* Feature strip */
+  .features {
+    margin: 56px auto 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .features div {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    font-size: 14.5px;
+    color: var(--ink-dim);
+  }
+  .features strong { display: block; color: var(--ink); margin-bottom: 4px; font-size: 15px; }
+
+  /* How to open */
+  #howto {
+    margin: 64px auto 0;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 30px 34px;
+    scroll-margin-top: 32px;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  #howto.flash {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 1px var(--amber), 0 0 40px rgba(255, 176, 58, 0.25);
+  }
+  #howto h2 { font-size: 22px; margin-bottom: 12px; }
+  #howto p { margin: 10px 0; color: var(--ink-dim); }
+  #howto strong { color: var(--ink); }
+  #howto code, #howto pre {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13.5px;
+  }
+  #howto pre {
+    background: #0b0805;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    color: #ffd28a;
+    margin: 12px 0;
+  }
+
+  footer {
+    text-align: center;
+    padding: 36px 16px 42px;
+    font-size: 13.5px;
+    color: var(--ink-dim);
+  }
+  footer a { color: var(--amber); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  @media (max-width: 700px) {
+    main { padding-top: 48px; }
+    .features { grid-template-columns: 1fr; }
+    #howto { padding: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn { transition: none; }
+    #howto { transition: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <h1>Snip</h1>
+    <p class="tagline">Native macOS video trimmer — drag a video in, trim with frame-accurate sliders, preview from any point, export lossless or re-encoded.</p>
+    <div class="cta">
+      <a id="download" class="btn" href="https://github.com/Alyetama/Snip/releases/latest/download/Snip.dmg">⬇︎&nbsp; Download for macOS</a>
+      <p class="meta">macOS 15+ · free &amp; open source · unsigned — <a href="#howto">how to open</a></p>
+    </div>
+  </section>
+
+  <div class="frame">
+    <span class="rail-top"></span>
+    <span class="rail-bottom"></span>
+    <img src="mockup.png" alt="Snip screenshot">
+  </div>
+
+  <section class="features">
+    <div><strong>Frame-by-frame on hold</strong>Hold a trim handle still for half a second — then every 8&nbsp;px of drag moves exactly one frame.</div>
+    <div><strong>Preview from anywhere</strong>Click the filmstrip to jump the playhead; loop the selection to check the exact cut.</div>
+    <div><strong>Lossless or frame-exact</strong>Instant passthrough export, or re-encode for frame-exact cuts — with a live size estimate.</div>
+  </section>
+
+  <section id="howto">
+    <h2>First launch (opening an unsigned app)</h2>
+    <p><strong>Snip isn't signed with an Apple Developer ID</strong>, so macOS blocks it the first time you open it. This is expected — you only need to do one of the following once, and it opens normally afterward.</p>
+    <p><strong>1. Right-click to open.</strong> In Finder, <strong>Control-click</strong> (or right-click) <code>Snip</code>, choose <strong>Open</strong>, then click <strong>Open</strong> again in the dialog.</p>
+    <p><strong>2. If macOS still won't let you (newer versions):</strong> open <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the message about <code>Snip</code> being blocked, and click <strong>Open Anyway</strong>. Confirm with <strong>Open Anyway</strong> (and Touch ID or your password if asked).</p>
+    <p><strong>3. Terminal fallback.</strong> If neither works, remove the quarantine flag and open it normally:</p>
+    <pre><code>/usr/bin/xattr -dr com.apple.quarantine /Applications/Snip.app</code></pre>
+    <p>(Adjust the path if you keep the app somewhere other than <code>/Applications</code>.)</p>
+  </section>
+</main>
+
+<footer>
+  <a href="https://github.com/Alyetama/Snip">GitHub</a> &nbsp;·&nbsp; MIT © 2026 Alyetama
+</footer>
+
+<script>
+  document.getElementById('download').addEventListener('click', function () {
+    var howto = document.getElementById('howto');
+    howto.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    howto.classList.add('flash');
+    setTimeout(function () { howto.classList.remove('flash'); }, 2200);
+  });
+</script>
+</body>
+</html>
