@@ -15,7 +15,7 @@ version number in it — see [Releases](https://github.com/Alyetama/Snip/release
 
 - Drag a video anywhere into the window to load it. ⌘O and Finder's "Open With" work too.
 - Two handles on a thumbnail timeline mark where the clip starts and ends.
-- Click anywhere on the timeline to jump there and play from that spot — handy for hunting down the exact cut.
+- Click or drag anywhere on the timeline to move the playhead there; press space to play from that spot — handy for hunting down the exact cut.
 - Need a precise edit? Press and hold a handle for about half a second. It switches to frame mode, where every 8 pixels of drag moves one frame.
 - Keyboard: space plays, arrows step a frame, shift-arrows jump a second, I and O set the in and out points, L loops, M mutes, ⌘E exports.
 - Export two ways: lossless (instant, but the cut lands on the nearest keyframe) or re-encode (slower, lands on the exact frame). Re-encode shows you an estimated file size before you commit.
