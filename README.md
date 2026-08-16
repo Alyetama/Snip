@@ -1,6 +1,6 @@
 # Snip
 
-A small Mac app for trimming video. Drop in a file, drag the two handles to the part you want to keep, and export. It plays inline while you work, and when you need to land on an exact frame, you can.
+A small Mac app for trimming and cropping video. Drop in a file, drag the two handles to the part you want to keep, and export. It plays inline while you work, and when you need to land on an exact frame, you can.
 
 ![Snip screenshot](docs/mockup.png)
 
@@ -17,7 +17,8 @@ version number in it — see [Releases](https://github.com/Alyetama/Snip/release
 - Two handles on a thumbnail timeline mark where the clip starts and ends.
 - Click or drag anywhere on the timeline to move the playhead there; press space to play from that spot — handy for hunting down the exact cut.
 - Need a precise edit? Press and hold a handle for about half a second. It switches to frame mode, where every 8 pixels of drag moves one frame.
-- Keyboard: space plays, arrows step a frame, shift-arrows jump a second, I and O set the in and out points, L loops, M mutes, ⌘E exports.
+- Crop the picture too: hit C, drag the box over the video, and pick a ratio if you want one (1:1, 16:9, 9:16, 4:3, or the source's own). Cropping always re-encodes, since passthrough copies the frames untouched.
+- Keyboard: space plays, arrows step a frame, shift-arrows jump a second, I and O set the in and out points, C crops, L loops, M mutes, ⌘E exports.
 - Export two ways: lossless (instant, but the cut lands on the nearest keyframe) or re-encode (slower, lands on the exact frame). Re-encode shows you an estimated file size before you commit.
 - Exports go to a temp file and swap in only if they succeed, so a failed export can't clobber a file you already had. It also won't let you overwrite the original.
 

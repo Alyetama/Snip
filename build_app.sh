@@ -15,5 +15,7 @@ if [ -f Resources/AppIcon.icns ]; then
     cp Resources/AppIcon.icns "build/$APP.app/Contents/Resources/AppIcon.icns"
 fi
 
-codesign --force -s - "build/$APP.app"
+# Absolute path on purpose: a Homebrew or conda "codesign" earlier on PATH is a
+# different tool and chokes on the bundle.
+/usr/bin/codesign --force -s - "build/$APP.app"
 echo "Built build/$APP.app"

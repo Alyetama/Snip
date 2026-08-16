@@ -3,6 +3,34 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum CropAspect: String, CaseIterable, Identifiable {
+    case free = "Free"
+    case original = "Original"
+    case square = "1:1"
+    case wide = "16:9"
+    case vertical = "9:16"
+    case classic = "4:3"
+
+    var id: String { rawValue }
+
+    /// Width ÷ height, or nil when the crop is unconstrained.
+    func ratio(original size: CGSize) -> CGFloat? {
+        switch self {
+        case .free: return nil
+        case .original: return size.height > 0 ? size.width / size.height : nil
+        case .square: return 1
+        case .wide: return 16.0 / 9.0
+        case .vertical: return 9.0 / 16.0
+        case .classic: return 4.0 / 3.0
+        }
+    }
+}
+
+/// Round down to an even number of pixels — H.264 rejects odd dimensions.
+func evenDown(_ value: CGFloat) -> CGFloat {
+    max(2, (value / 2).rounded(.down) * 2)
+}
+
 @MainActor
 final class PlayerModel: ObservableObject {
     static let shared = PlayerModel()
@@ -22,6 +50,12 @@ final class PlayerModel: ObservableObject {
     @Published var lossless = true { didSet { updateSizeEstimate() } }
     @Published var estimatedOutputBytes: Int64?
     @Published var sourceFileBytes: Int64 = 0
+    @Published var cropMode = false
+    /// Crop in video pixels, origin top-left of the oriented frame.
+    @Published var cropRect: CGRect = .zero { didSet { updateSizeEstimate() } }
+    @Published var cropAspect: CropAspect = .free {
+        didSet { if cropAspect != oldValue { applyAspectToCrop() } }
+    }
     @Published var thumbnails: [CGImage] = []
     @Published var isExporting = false
     @Published var exportProgress: Double = 0
@@ -29,6 +63,8 @@ final class PlayerModel: ObservableObject {
     @Published var errorMessage: String?
 
     private var asset: AVURLAsset?
+    private var videoTrack: AVAssetTrack?
+    private var preferredTransform: CGAffineTransform = .identity
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var keyMonitor: Any?
@@ -39,6 +75,26 @@ final class PlayerModel: ObservableObject {
     var hasVideo: Bool { videoURL != nil }
     var frameDuration: Double { fps > 0 ? 1.0 / fps : 1.0 / 30.0 }
     var selectionDuration: Double { max(0, trimEnd - trimStart) }
+
+    var fullFrame: CGRect { CGRect(origin: .zero, size: naturalSize) }
+
+    /// True once the crop is meaningfully smaller than the whole frame.
+    var isCropped: Bool {
+        guard naturalSize.width > 0, cropRect.width > 0 else { return false }
+        let full = fullFrame
+        return abs(cropRect.minX - full.minX) > 1 || abs(cropRect.minY - full.minY) > 1
+            || abs(cropRect.width - full.width) > 1 || abs(cropRect.height - full.height) > 1
+    }
+
+    /// Cropping has to re-encode — passthrough copies samples untouched, so it
+    /// can't change the picture.
+    var willReencode: Bool { !lossless || isCropped }
+
+    /// Encoders want even dimensions, so that's what the output actually gets.
+    var outputSize: CGSize {
+        let rect = isCropped ? cropRect : fullFrame
+        return CGSize(width: evenDown(rect.width), height: evenDown(rect.height))
+    }
 
     private init() {
         installKeyMonitor()
@@ -69,6 +125,11 @@ final class PlayerModel: ObservableObject {
             let transformed = size.applying(transform)
             naturalSize = CGSize(width: abs(transformed.width), height: abs(transformed.height))
             sourceFileBytes = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            videoTrack = track
+            preferredTransform = transform
+            cropMode = false
+            cropAspect = .free
+            cropRect = CGRect(origin: .zero, size: naturalSize)
             trimStart = 0
             trimEnd = duration
             currentTime = 0
@@ -209,15 +270,81 @@ final class PlayerModel: ObservableObject {
         }
     }
 
+    // MARK: - Crop
+
+    func resetCrop() {
+        cropAspect = .free
+        cropRect = fullFrame
+    }
+
+    func toggleCropMode() {
+        guard hasVideo else { return }
+        cropMode.toggle()
+        if cropMode { pause() }
+    }
+
+    /// Re-shape the current crop to the selected preset, keeping it centered on
+    /// what the user already had and inside the frame.
+    private func applyAspectToCrop() {
+        guard hasVideo, let ratio = cropAspect.ratio(original: naturalSize) else { return }
+        let current = cropRect.width > 0 ? cropRect : fullFrame
+        var width = current.width
+        var height = width / ratio
+        if height > naturalSize.height {
+            height = naturalSize.height
+            width = height * ratio
+        }
+        if width > naturalSize.width {
+            width = naturalSize.width
+            height = width / ratio
+        }
+        var rect = CGRect(
+            x: current.midX - width / 2,
+            y: current.midY - height / 2,
+            width: width,
+            height: height
+        )
+        rect.origin.x = min(max(0, rect.origin.x), naturalSize.width - rect.width)
+        rect.origin.y = min(max(0, rect.origin.y), naturalSize.height - rect.height)
+        cropRect = rect
+    }
+
+    /// Builds the composition that performs the crop. Returns nil when the whole
+    /// frame is kept, so uncropped exports stay on the plain path.
+    private func makeCropComposition() -> AVMutableVideoComposition? {
+        guard isCropped, let track = videoTrack, let asset else { return nil }
+
+        // preferredTransform can place the oriented frame away from the origin,
+        // so shift it back to (0,0) before applying the crop offset.
+        let orientedBox = CGRect(origin: .zero, size: track.naturalSize).applying(preferredTransform)
+        let normalize = CGAffineTransform(translationX: -orientedBox.minX, y: -orientedBox.minY)
+        let crop = CGAffineTransform(translationX: -cropRect.minX, y: -cropRect.minY)
+        let transform = preferredTransform.concatenating(normalize).concatenating(crop)
+
+        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        layer.setTransform(transform, at: .zero)
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: asset.duration)
+        instruction.layerInstructions = [layer]
+
+        let composition = AVMutableVideoComposition()
+        composition.renderSize = outputSize
+        composition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(1, fps.rounded())))
+        composition.instructions = [instruction]
+        return composition
+    }
+
     // MARK: - Export
 
     /// Estimated re-encoded output size, debounced so handle drags don't spam sessions.
     private func updateSizeEstimate() {
         estimateTask?.cancel()
         estimatedOutputBytes = nil
-        guard !lossless, let asset, let src = videoURL, selectionDuration > 0 else { return }
+        guard willReencode, let asset, let src = videoURL, selectionDuration > 0 else { return }
         let start = trimStart
         let end = trimEnd
+        let composition = makeCropComposition()
         let fileType: AVFileType = ["mp4", "m4v"].contains(src.pathExtension.lowercased()) ? .mp4 : .mov
         estimateTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
@@ -228,6 +355,7 @@ final class PlayerModel: ObservableObject {
                 start: CMTime(seconds: start, preferredTimescale: ts),
                 end: CMTime(seconds: end, preferredTimescale: ts)
             )
+            session.videoComposition = composition
             session.outputFileType = fileType
             let bytes: Int64 = await withCheckedContinuation { continuation in
                 session.estimateOutputFileLength { length, _ in
@@ -257,7 +385,7 @@ final class PlayerModel: ObservableObject {
             return
         }
         pause()
-        let preset = lossless ? AVAssetExportPresetPassthrough : AVAssetExportPresetHighestQuality
+        let preset = willReencode ? AVAssetExportPresetHighestQuality : AVAssetExportPresetPassthrough
         guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
             errorMessage = "Could not create an export session."
             return
@@ -267,6 +395,7 @@ final class PlayerModel: ObservableObject {
             start: CMTime(seconds: trimStart, preferredTimescale: ts),
             end: CMTime(seconds: trimEnd, preferredTimescale: ts)
         )
+        session.videoComposition = makeCropComposition()
         let fileType: AVFileType = out.pathExtension.lowercased() == "mp4" ? .mp4 : .mov
 
         isExporting = true
@@ -294,7 +423,7 @@ final class PlayerModel: ObservableObject {
         } catch {
             try? FileManager.default.removeItem(at: temp)
             var message = "Export failed: \(error.localizedDescription)"
-            if lossless { message += " — try the Re-encode mode." }
+            if !willReencode { message += " — try the Re-encode mode." }
             errorMessage = message
         }
         monitor.cancel()
@@ -331,6 +460,9 @@ final class PlayerModel: ObservableObject {
         case 124: // right arrow
             shift ? seek(to: currentTime + 1) : step(by: 1)
             return true
+        case 53: // escape
+            if cropMode { cropMode = false; return true }
+            return false
         default:
             break
         }
@@ -339,6 +471,7 @@ final class PlayerModel: ObservableObject {
         case "o": markOut(); return true
         case "l": loopSelection.toggle(); return true
         case "m": isMuted.toggle(); return true
+        case "c": toggleCropMode(); return true
         default: return false
         }
     }

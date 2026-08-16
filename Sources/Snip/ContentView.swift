@@ -74,14 +74,74 @@ struct EditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            PlayerLayerView(player: model.player)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+            videoStage
+            if model.cropMode { cropBar }
             transport
             TimelineView()
                 .padding(.horizontal, 18)
             bottomBar
         }
+    }
+
+    /// The video plus the crop overlay, which needs to know exactly where the
+    /// aspect-fitted picture sits inside the black stage.
+    private var videoStage: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                PlayerLayerView(player: model.player)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                CropOverlay(videoRect: fittedVideoRect(in: geo.size))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+    }
+
+    private func fittedVideoRect(in container: CGSize) -> CGRect {
+        let size = model.naturalSize
+        guard size.width > 0, size.height > 0 else {
+            return CGRect(origin: .zero, size: container)
+        }
+        let scale = min(container.width / size.width, container.height / size.height)
+        let width = size.width * scale
+        let height = size.height * scale
+        return CGRect(
+            x: (container.width - width) / 2,
+            y: (container.height - height) / 2,
+            width: width,
+            height: height
+        )
+    }
+
+    private var cropBar: some View {
+        HStack(spacing: 14) {
+            Text("CROP")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Color.amber)
+
+            Picker("", selection: $model.cropAspect) {
+                ForEach(CropAspect.allCases) { aspect in
+                    Text(aspect.rawValue).tag(aspect)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 380)
+            .labelsHidden()
+
+            Text("\(Int(model.outputSize.width))×\(Int(model.outputSize.height))")
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button("Reset") { model.resetCrop() }
+                .disabled(!model.isCropped)
+            Button("Done") { model.cropMode = false }
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.04))
     }
 
     private var header: some View {
@@ -166,6 +226,13 @@ struct EditorView: View {
 
             Divider().frame(height: 16)
 
+            Button { model.toggleCropMode() } label: {
+                Image(systemName: "crop")
+                    .foregroundStyle(model.cropMode || model.isCropped ? Color.amber : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Crop the picture (C)")
+
             Button { model.loopSelection.toggle() } label: {
                 Image(systemName: "repeat")
                     .foregroundStyle(model.loopSelection ? Color.amber : Color.secondary)
@@ -193,15 +260,22 @@ struct EditorView: View {
 
                 Spacer()
 
-                Picker("", selection: $model.lossless) {
-                    Text("Lossless").tag(true)
-                    Text("Re-encode").tag(false)
+                if model.isCropped {
+                    Text("Re-encode · required for crop")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("Cropping changes the picture, so the video has to be re-encoded.")
+                } else {
+                    Picker("", selection: $model.lossless) {
+                        Text("Lossless").tag(true)
+                        Text("Re-encode").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                    .help("Lossless is instant but cuts snap to keyframes. Re-encode is frame-exact.")
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
-                .help("Lossless is instant but cuts snap to keyframes. Re-encode is frame-exact.")
 
-                if !model.lossless {
+                if model.willReencode {
                     Text(model.estimatedOutputBytes.map {
                         "≈ " + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
                     } ?? "estimating…")
